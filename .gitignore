@@ -1,1 +1,10 @@
-﻿.*/
+﻿# Ignore folders that start with dot
+.*/
+**/.*/
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local logs
+bridge_log_*.txt
