@@ -1,0 +1,8 @@
+[16:55:54.155] === Bridge iniciado ===
+[16:55:54.318] [OK] EV3 conectado
+[16:55:54.319] [OK] Escuchando en UDP puerto 5000
+[16:55:54.321] Bridge operativo. Esperando acciones del Jetson...
+[16:55:54.322] Presiona Ctrl+C para detener
+
+[16:56:12.942] Enviando STOP final al EV3...
+[16:56:13.669] Bridge cerrado
