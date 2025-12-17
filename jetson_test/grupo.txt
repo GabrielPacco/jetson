@@ -1,0 +1,7 @@
+4
+
+Lego Robot
+correr DQN en el yetson.
+conectarse por bluethoot al robot Lego y yetson enviar instrucciones
+
+edge dqn conectarse al lego por bluethoot, usb bluethoot
