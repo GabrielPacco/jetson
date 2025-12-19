@@ -18,7 +18,15 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 # ==============================================================================
 # Find LibTorch (REQUERIDO - ya instalado en Jetson)
 # ==============================================================================
-list(APPEND CMAKE_PREFIX_PATH "/usr/local/libtorch")
+# Agregar múltiples rutas comunes donde puede estar LibTorch
+list(APPEND CMAKE_PREFIX_PATH
+    "/usr/local/libtorch"
+    "/usr/local/lib/python3.8/dist-packages/torch"
+    "/usr/lib/python3.8/dist-packages/torch"
+    "/opt/libtorch"
+    "$ENV{HOME}/.local/lib/python3.8/site-packages/torch"
+)
+
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
