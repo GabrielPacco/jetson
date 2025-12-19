@@ -10,13 +10,13 @@
  *
  * Compilar:
  *   mkdir build && cd build
- *   cmake ..
- *   make
+ *   cmake -DCMAKE_PREFIX_PATH=/usr/local/libtorch ..
+ *   make -j4
  *
  * Ejecutar:
- *   ./jetson_dqn <laptop_ip> [model_path]
- *   ./jetson_dqn 192.168.1.100                    # Modo random
- *   ./jetson_dqn 192.168.1.100 models/dqn.pt      # Modo DQN
+ *   ./jetson_dqn <laptop_ip> -p random                    # Modo random
+ *   ./jetson_dqn <laptop_ip> -p dqn                       # Modo DQN (sin modelo)
+ *   ./jetson_dqn <laptop_ip> -p dqn -m models/dqn.pt     # Modo DQN con modelo
  */
 
 #include <iostream>
@@ -30,6 +30,11 @@
 #include <cstring>
 #include <random>
 #include <memory>
+
+// DQN includes (código probado de jetson_test)
+#include <torch/torch.h>
+#include "dqn/agent.h"
+#include "dqn/types.h"
 
 // ============================================================================
 // CONFIGURACIÓN
@@ -203,8 +208,89 @@ private:
     std::uniform_int_distribution<int> dist_;
 };
 
-// TODO: Agregar DQNPolicy cuando integremos LibTorch
-// class DQNPolicy : public Policy { ... };
+/**
+ * Política DQN (usa red neuronal entrenada)
+ * Código DQN probado y verificado de jetson_test
+ */
+class DQNPolicy : public Policy {
+public:
+    DQNPolicy(const std::string& model_path = "")
+        : model_loaded_(false) {
+
+        // Configurar device (CUDA si está disponible)
+        device_ = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+        std::cout << "[DQNPolicy] Using device: " << device_ << std::endl;
+
+        // Parámetros del entorno EV3
+        // state_dim = 4: [gyro_x, gyro_y, contact_front, contact_side]
+        // action_dim = 5: [STOP, FORWARD, LEFT, RIGHT, BACKWARD]
+        const int64_t state_dim = 4;
+        const int64_t action_dim = NUM_ACTIONS;
+
+        // Inicializar hiperparámetros (usar defaults)
+        dqn::Hyperparameters params;
+
+        // Crear agente DQN (código probado de jetson_test)
+        agent_ = std::make_unique<dqn::DQNAgent>(state_dim, action_dim, params, device_);
+        agent_->eval();  // Modo evaluación (no entrenamiento)
+
+        // Cargar modelo si se especificó
+        if (!model_path.empty()) {
+            loadModel(model_path);
+        } else {
+            std::cout << "[DQNPolicy] No model specified, using random initialization" << std::endl;
+            std::cout << "[DQNPolicy] To use trained model: ./jetson_dqn <ip> -p dqn -m models/dqn_best.pt" << std::endl;
+        }
+    }
+
+    bool loadModel(const std::string& model_path) {
+        try {
+            std::cout << "[DQNPolicy] Loading model from: " << model_path << std::endl;
+            agent_->load(model_path);
+            model_loaded_ = true;
+            std::cout << "[DQNPolicy] ✓ Model loaded successfully" << std::endl;
+            return true;
+        } catch (const std::exception& e) {
+            std::cerr << "[DQNPolicy] ✗ Failed to load model: " << e.what() << std::endl;
+            std::cerr << "[DQNPolicy] Continuing with random initialization" << std::endl;
+            model_loaded_ = false;
+            return false;
+        }
+    }
+
+    int selectAction() override {
+        // NOTA: Por ahora usamos estado dummy (todos ceros)
+        // En el futuro, esto se reemplazaría con lecturas reales de sensores del EV3
+        // que llegarían desde el bridge (comunicación bidireccional)
+        torch::Tensor state = torch::zeros({4}, torch::kFloat32);
+
+        // Mover estado al device correcto
+        state = state.to(device_);
+
+        // Seleccionar acción usando el agente DQN (código probado)
+        // false = no training mode (greedy, sin epsilon exploration)
+        int64_t action;
+        {
+            torch::NoGradGuard no_grad;  // Deshabilitar gradientes para inferencia
+            action = agent_->select_action(state, false);
+        }
+
+        return static_cast<int>(action);
+    }
+
+    std::string getName() const override {
+        return model_loaded_ ? "DQN (trained)" : "DQN (random init)";
+    }
+
+    bool isModelLoaded() const {
+        return model_loaded_;
+    }
+
+private:
+    std::unique_ptr<dqn::DQNAgent> agent_;
+    torch::Device device_;
+    bool model_loaded_;
+};
 
 // ============================================================================
 // MAIN
@@ -218,12 +304,15 @@ void print_usage(const char* program_name) {
     std::cout << std::endl;
     std::cout << "Opciones:" << std::endl;
     std::cout << "  -p <policy>      Política de selección (default: random)" << std::endl;
-    std::cout << "                   random  = Acciones aleatorias" << std::endl;
-    std::cout << "                   dqn     = DQN con modelo entrenado (TODO)" << std::endl;
+    std::cout << "                   random  = Acciones aleatorias (testing)" << std::endl;
+    std::cout << "                   dqn     = DQN con red neuronal" << std::endl;
+    std::cout << "  -m <model>       Ruta del modelo .pt (solo con -p dqn)" << std::endl;
     std::cout << std::endl;
     std::cout << "Ejemplos:" << std::endl;
     std::cout << "  " << program_name << " 192.168.1.100" << std::endl;
     std::cout << "  " << program_name << " 192.168.1.100 -p random" << std::endl;
+    std::cout << "  " << program_name << " 192.168.1.100 -p dqn" << std::endl;
+    std::cout << "  " << program_name << " 192.168.1.100 -p dqn -m models/dqn_best.pt" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -237,12 +326,15 @@ int main(int argc, char* argv[]) {
 
     std::string laptop_ip = argv[1];
     std::string policy_name = "random";
+    std::string model_path = "";
 
     // Parsear opciones
     for (int i = 2; i < argc; i++) {
         std::string arg = argv[i];
         if (arg == "-p" && i + 1 < argc) {
             policy_name = argv[++i];
+        } else if (arg == "-m" && i + 1 < argc) {
+            model_path = argv[++i];
         }
     }
 
@@ -273,9 +365,8 @@ int main(int argc, char* argv[]) {
         policy = std::make_unique<RandomPolicy>();
         std::cout << "[Policy] Usando política aleatoria (testing mode)" << std::endl;
     } else if (policy_name == "dqn") {
-        std::cerr << "[ERROR] Política DQN aún no implementada" << std::endl;
-        std::cerr << "        Por ahora usa: -p random" << std::endl;
-        return 1;
+        std::cout << "[Policy] Usando política DQN (código probado de jetson_test)" << std::endl;
+        policy = std::make_unique<DQNPolicy>(model_path);
     } else {
         std::cerr << "[ERROR] Política desconocida: " << policy_name << std::endl;
         print_usage(argv[0]);

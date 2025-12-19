@@ -1,37 +1,29 @@
-# Jetson DQN Agent - Control de EV3 vía UDP
+# Jetson DQN + UDP para Control EV3
 
-Sistema para controlar el robot EV3 desde el Jetson Nano, enviando comandos por UDP a un bridge en la laptop.
+✅ **INTEGRACIÓN COMPLETA** - DQN probado de jetson_test + Comunicación UDP funcional
 
-## Estado Actual del Proyecto
+Sistema integrado que combina:
+- **DQN probado** de `jetson_test` (CÓDIGO SIN MODIFICAR ✓)
+- **Comunicación UDP** funcional al bridge de laptop
 
-### ✅ COMPLETO - Infraestructura Básica
+## ✅ Estado: INTEGRACIÓN COMPLETA
 
-1. **Laptop Bridge** (`../laptop/`)
-   - ✅ Servidor UDP funcionando correctamente
-   - ✅ Control del EV3 por USB con ev3-dc
-   - ✅ Watchdog de seguridad (STOP automático si no recibe comandos)
-   - ✅ Logging completo de todas las acciones
-   - ✅ **PROBADO Y FUNCIONANDO**
+### DQN Core ✓
+- **Headers**: `include/dqn/` copiados sin cambios de jetson_test
+- **Source**: `src/dqn/` copiado sin cambios de jetson_test
+- **Probado**: Código ya verificado en Jetson Xavier
+- **CMake**: Configurado con LibTorch
 
-2. **Código Jetson Básico** (`./`)
-   - ✅ Cliente UDP para enviar acciones
-   - ✅ Política Random para testing
-   - ✅ Arquitectura modular (Policy pattern)
-   - ✅ CMake configurado (sin dependencias pesadas)
-   - ✅ Compilación básica lista
+### Comunicación UDP ✓
+- **Cliente UDP**: Funcional en main.cpp
+- **Servidor Bridge**: Probado en laptop
+- **EV3**: Respondiendo correctamente
 
-### 🚧 EN DESARROLLO - Integración DQN
-
-1. **Análisis del Repositorio jetson_test**
-   - ✅ Código completo con LibTorch analizado
-   - ✅ Estructura DQN profesional identificada
-   - ⚠️ **FALTA**: Adaptar para UDP (actualmente usa Bluetooth)
-   - ⚠️ **FALTA**: Integrar con el código actual
-
-2. **Modelo DQN**
-   - ❌ **NO ENTRENADO**: No hay modelo .pt disponible
-   - ❌ **NO INTEGRADO**: Falta implementar DQNPolicy class
-   - ❌ **LIBTORCH**: Pendiente instalar y configurar en Jetson
+### Integración ✓
+- **DQNPolicy**: Implementado en main.cpp (líneas 210-288)
+- **Policy Pattern**: Soporta Random y DQN
+- **Argumentos**: `-p random` o `-p dqn -m modelo.pt`
+- **Listo**: Para compilar en Jetson
 
 ---
 
@@ -64,61 +56,184 @@ Sistema para controlar el robot EV3 desde el Jetson Nano, enviando comandos por 
 
 ---
 
-## Compilación y Ejecución
+## 🚀 Compilación en Jetson Xavier
 
-### Requisitos Mínimos (Modo Random)
+### Prerequisitos
 
-- Jetson Nano (JetPack 4.x+)
-- GCC/G++ con C++14
-- CMake 3.10+
-- pthread
+**1. Verificar dónde está LibTorch instalado:**
+
+```bash
+# Buscar LibTorch en el sistema
+find /usr -name "libtorch" 2>/dev/null
+find / -name "TorchConfig.cmake" 2>/dev/null | head -5
+
+# O verificar variable de entorno
+echo $LD_LIBRARY_PATH
+```
+
+**Ubicaciones comunes:**
+- `/usr/local/libtorch` (instalación estándar)
+- `/opt/libtorch`
+- `~/libtorch` (home del usuario)
+
+**2. Si LibTorch NO está instalado:**
+
+```bash
+cd /tmp
+wget https://download.pytorch.org/libtorch/cu117/libtorch-cxx11-abi-shared-with-deps-2.0.0%2Bcu117.zip
+unzip libtorch*.zip
+sudo mv libtorch /usr/local/
+
+# Variables de entorno
+echo 'export LD_LIBRARY_PATH=/usr/local/libtorch/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ### Compilar
 
 ```bash
 cd jetson_cpp
-mkdir -p build
-cd build
-cmake ..
-make
+mkdir -p build && cd build
+
+# PASO IMPORTANTE: Reemplaza LIBTORCH_PATH con la ruta REAL en tu sistema
+# Usa el comando de arriba (find) para encontrarla
+export LIBTORCH_PATH=/ruta/a/libtorch  # CAMBIAR ESTO
+
+# Configurar CMake
+cmake -DCMAKE_PREFIX_PATH=$LIBTORCH_PATH \
+      -DCMAKE_BUILD_TYPE=Release \
+      ..
+
+# Compilar (usar todos los cores)
+make -j4
 ```
 
-### Ejecutar (Modo Random - Testing)
+**Ejemplos según ubicación:**
 
 ```bash
-# Asegúrate de que el bridge esté corriendo en la laptop
-# En otra terminal de la laptop:
-#   cd laptop
-#   python bridge.py
+# Si LibTorch está en /usr/local/libtorch (común):
+cmake -DCMAKE_PREFIX_PATH=/usr/local/libtorch -DCMAKE_BUILD_TYPE=Release ..
 
-# En el Jetson:
-./jetson_dqn <laptop_ip>
+# Si LibTorch está en /opt/libtorch:
+cmake -DCMAKE_PREFIX_PATH=/opt/libtorch -DCMAKE_BUILD_TYPE=Release ..
 
-# Ejemplo:
-./jetson_dqn 192.168.1.100
+# Si LibTorch está en tu home:
+cmake -DCMAKE_PREFIX_PATH=$HOME/libtorch -DCMAKE_BUILD_TYPE=Release ..
+```
+
+**Salida esperada:**
+```
+-- Found LibTorch: /usr/local/libtorch/lib/libtorch.so
+-- LibTorch include dirs: /usr/local/libtorch/include
+========================================
+Jetson DQN + UDP Configuration
+========================================
+[100%] Built target dqn_core
+[100%] Built target jetson_dqn
+```
+
+---
+
+---
+
+## 🎓 ENTRENAMIENTO (Requerido por el proyecto)
+
+### **Entrenar DQN en simulación**
+
+```bash
+cd jetson_cpp/build
+
+# Entrenar 500 episodios (recomendado)
+./train_simulation 500
+
+# O entrenar menos para prueba rápida
+./train_simulation 100
 ```
 
 **Salida esperada:**
 ```
 =========================================================================
-  Jetson DQN Agent - Control de EV3 vía UDP
+  DQN Training - SIMULATION MODE (CartPole)
 =========================================================================
-Laptop Bridge:    192.168.1.100:5000
-Frecuencia:       5 Hz
-Política:         random
-Presiona Ctrl+C para detener
-=========================================================================
+[Device] cuda:0
+[Environment] Creando entorno CartPole simulado...
+[Agent] Creando DQN agent...
+[DQNAgent] Initialized with:
+  State dim: 4
+  Action dim: 2
+  Hidden dims: [128, 128]
+  Device: cuda:0
 
-[Policy] Usando política aleatoria (testing mode)
-[UDP] Listo para enviar a 192.168.1.100:5000
-[Init] Enviando STOP inicial...
-
-[Running] Iniciando loop de control...
-=========================================================================
-[17:30:45.123] Action: 1 (FORWARD)
-[17:30:45.323] Action: 2 (TURN_LEFT)
-[17:30:45.523] Action: 0 (STOP)
+[Training] Iniciando entrenamiento simulado...
+[Episode   10] Reward:   23.00 | Epsilon: 0.904 | Loss: 0.0125
+[Episode   50] Reward:   89.00 | Epsilon: 0.605 | Loss: 0.0056
+[Episode  100] Reward:  145.00 | Epsilon: 0.364 | Loss: 0.0023
 ...
+[Episode  500] Reward:  195.00 | Epsilon: 0.050 | Loss: 0.0008
+
+Modelos guardados:
+  - models/dqn_simulation_best.pt
+  - models/dqn_simulation_final.pt
+```
+
+**Modelos generados:**
+- `models/dqn_simulation_best.pt` - Mejor modelo durante entrenamiento
+- `models/dqn_simulation_final.pt` - Modelo al finalizar
+
+**Tiempo estimado:** ~10-15 minutos para 500 episodios en Jetson Xavier
+
+---
+
+## 🎮 INFERENCIA
+
+Después de entrenar, usar el modelo para inferencia:
+
+### Modo 1: Random (Testing de comunicación)
+
+```bash
+cd build
+./jetson_dqn 192.168.1.100 -p random
+```
+
+Acciones aleatorias, útil para:
+- ✓ Verificar comunicación UDP
+- ✓ Probar que EV3 responde
+- ✓ Testear infraestructura
+
+### Modo 2: DQN sin modelo entrenado
+
+```bash
+./jetson_dqn 192.168.1.100 -p dqn
+```
+
+Usa DQN con pesos aleatorios (no entrenado), útil para:
+- ✓ Verificar que DQN compila y carga
+- ✓ Probar inferencia de red neuronal
+- ✓ Confirmar CUDA funciona
+
+**Salida esperada:**
+```
+[DQNPolicy] Using device: cuda:0
+[DQNPolicy] No model specified, using random initialization
+[DQNAgent] Initialized with:
+  State dim: 4
+  Action dim: 5
+  Hidden dims: [128, 128]
+  Device: cuda:0
+```
+
+### Modo 3: DQN con modelo entrenado ⭐ **RECOMENDADO**
+
+```bash
+# Usar modelo generado por train_simulation
+./jetson_dqn 192.168.1.100 -p dqn -m models/dqn_simulation_best.pt
+```
+
+**Salida esperada:**
+```
+[DQNPolicy] Using device: cuda:0
+[DQNPolicy] Loading model from: models/dqn_simulation_best.pt
+[DQNPolicy] ✓ Model loaded successfully
 ```
 
 ---

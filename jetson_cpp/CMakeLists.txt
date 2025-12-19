@@ -1,73 +1,98 @@
-cmake_minimum_required(VERSION 3.10)
-project(Jetson_DQN_EV3)
+cmake_minimum_required(VERSION 3.18)
+project(Jetson_DQN_EV3 LANGUAGES CXX)
 
-# C++ Standard (necesario para unique_ptr, etc.)
-set(CMAKE_CXX_STANDARD 14)
+# C++ Standard (C++17 requerido por LibTorch)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Flags de compilación
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -Wall -Wextra -pthread")
+# ==============================================================================
+# Build Configuration
+# ==============================================================================
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
 
-# ============================================================================
-# MODO 1: Compilación BÁSICA (sin dependencias)
-# ============================================================================
-# Solo necesita C++ estándar y sockets UDP
-# Usa política Random para testing
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
-message(STATUS "Compilando en modo BÁSICO (Random Policy)")
-message(STATUS "  - No requiere OpenCV, LibTorch, ni TensorRT")
-message(STATUS "  - Solo envío UDP para testing")
+# ==============================================================================
+# Find LibTorch (REQUERIDO - ya instalado en Jetson)
+# ==============================================================================
+list(APPEND CMAKE_PREFIX_PATH "/usr/local/libtorch")
+find_package(Torch REQUIRED)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
+message(STATUS "Found LibTorch: ${TORCH_LIBRARIES}")
+message(STATUS "LibTorch include dirs: ${TORCH_INCLUDE_DIRS}")
+
+# Threads (para comunicación UDP)
+find_package(Threads REQUIRED)
+
+# ==============================================================================
+# Include Directories
+# ==============================================================================
+include_directories(
+    ${PROJECT_SOURCE_DIR}/include
+    ${TORCH_INCLUDE_DIRS}
+)
+
+# ==============================================================================
+# DQN Library (código probado de jetson_test)
+# ==============================================================================
+add_library(dqn_core STATIC
+    src/dqn/network.cpp
+    src/dqn/replay_buffer.cpp
+    src/dqn/agent.cpp
+    src/environment/environment_interface.cpp
+    src/environment/cartpole_env.cpp
+    src/utils/logger.cpp
+    src/utils/metrics.cpp
+    # NOTA: config_parser.cpp NO se incluye porque requiere yaml-cpp
+    # train_simulation usa parámetros hardcodeados (no necesita yaml)
+)
+
+target_link_libraries(dqn_core
+    ${TORCH_LIBRARIES}
+)
+
+# ==============================================================================
+# Executables
+# ==============================================================================
+
+# Inference executable (DQN + UDP)
 add_executable(jetson_dqn main.cpp)
+target_link_libraries(jetson_dqn
+    dqn_core
+    ${CMAKE_THREAD_LIBS_INIT}
+)
 
-# pthread para threading
-target_link_libraries(jetson_dqn pthread)
+# Training executable (Simulation mode)
+add_executable(train_simulation apps/train_simulation.cpp)
+target_link_libraries(train_simulation dqn_core)
 
-message(STATUS "Ejecutable: jetson_dqn")
+# ==============================================================================
+# Print Configuration Summary
+# ==============================================================================
+message(STATUS "========================================")
+message(STATUS "Jetson DQN + UDP Configuration")
+message(STATUS "========================================")
+message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "  C++ compiler: ${CMAKE_CXX_COMPILER}")
+message(STATUS "  C++ standard: ${CMAKE_CXX_STANDARD}")
+message(STATUS "  LibTorch: ${TORCH_LIBRARIES}")
+message(STATUS "========================================")
 message(STATUS "")
 message(STATUS "Para compilar:")
+message(STATUS "  cd jetson_cpp")
 message(STATUS "  mkdir -p build && cd build")
-message(STATUS "  cmake ..")
-message(STATUS "  make")
+message(STATUS "  cmake -DCMAKE_PREFIX_PATH=/usr/local/libtorch ..")
+message(STATUS "  make -j4")
 message(STATUS "")
-message(STATUS "Para ejecutar:")
-message(STATUS "  ./jetson_dqn <laptop_ip>")
-message(STATUS "  ./jetson_dqn 192.168.1.100")
-
-# ============================================================================
-# MODO 2: Con DQN COMPLETO (comentado por ahora)
-# ============================================================================
-# Descomentar cuando quieras integrar un modelo DQN real
-
-# option(USE_DQN "Build with DQN support (requires LibTorch)" OFF)
-#
-# if(USE_DQN)
-#     message(STATUS "Compilando con soporte DQN (LibTorch)")
-#
-#     # Buscar LibTorch
-#     find_package(Torch REQUIRED)
-#     include_directories(${TORCH_INCLUDE_DIRS})
-#     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-#
-#     # Opcional: OpenCV para cámara
-#     find_package(OpenCV)
-#     if(OpenCV_FOUND)
-#         include_directories(${OpenCV_INCLUDE_DIRS})
-#     endif()
-#
-#     # Compilar con soporte DQN
-#     add_executable(jetson_dqn_full
-#         main.cpp
-#         dqn_agent.cpp
-#     )
-#
-#     # Linkear librerías
-#     set(LIBS pthread ${TORCH_LIBRARIES})
-#     if(OpenCV_FOUND)
-#         set(LIBS ${LIBS} ${OpenCV_LIBS})
-#     endif()
-#
-#     target_link_libraries(jetson_dqn_full ${LIBS})
-# endif()
+message(STATUS "Para entrenar (simulación):")
+message(STATUS "  ./train_simulation [num_episodes]")
+message(STATUS "")
+message(STATUS "Para ejecutar inferencia:")
+message(STATUS "  ./jetson_dqn <laptop_ip> -p dqn [-m modelo.pt]")
+message(STATUS "========================================")
 
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR})
