@@ -1,10 +1,43 @@
-﻿# Ignore folders that start with dot
-.*/
-**/.*/
-
-# Python caches
+﻿# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 
-# Local logs
+# C++ Build
+build/
+*.o
+*.so
+*.a
+*.exe
+
+# Logs
+*.log
 bridge_log_*.txt
+training.log
+simulation_training.log
+
+# Models (archivos grandes)
+models/*.pt
+models/*.pth
+models/*.onnx
+models/*.trt
+!models/.gitkeep
+
+# Metrics y checkpoints
+*.csv
+models/checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Config local
+configs/local_*.yaml

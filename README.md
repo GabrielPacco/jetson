@@ -1,183 +1,217 @@
-# DQN Jetson → EV3 Control
+# Sistema DQN para Control de Robot EV3
 
-Control robótico distribuido: **Jetson (DQN C++)** → **Laptop (Puente Python)** → **EV3 (Motores A/D)**
-
----
-
-## Arquitectura
-
-```
-Jetson Nano          Laptop Windows        EV3 Robot
-┌────────────┐      ┌─────────────┐      ┌──────────┐
-│ DQN (C++)  │ UDP  │ Bridge (Py) │ USB  │ Motor A  │
-│ + Cámara   │─────>│ Safety      │─────>│ Motor D  │
-│ OpenCV     │      │ Relay       │      └──────────┘
-└────────────┘      └─────────────┘
- Acción 0-4          Logs/Timeout        A=izq, D=der
-```
-
-**Acciones**:
-- 0: STOP
-- 1: FORWARD (A=+, D=+)
-- 2: TURN_LEFT (A=-, D=+)
-- 3: TURN_RIGHT (A=+, D=-)
-- 4: BACKWARD (A=-, D=-)
-
-**Safety**: Si laptop no recibe del Jetson por >0.5s → STOP automático
+**Deep Q-Network (DQN) implementado en C++/CUDA sobre Jetson Xavier para control autónomo del robot LEGO Mindstorms EV3**
 
 ---
 
-## Setup (5 min)
+## 🎯 Proyecto Final - Deep Reinforcement Learning
 
-### 1. Red
-- Conecta Jetson y Laptop al mismo router
-- Anota IP de laptop: `ipconfig` en Windows
-- Edita `config.py` línea 10 con esa IP
+Sistema de control inteligente que combina:
+- ✅ **DQN en C++ con CUDA** (Jetson Xavier)
+- ✅ **Aprendizaje y inferencia en Jetson** (no en PC externo)
+- ✅ **Comunicación UDP** (Jetson → Laptop → EV3)
+- ✅ **Control de robot físico** LEGO Mindstorms EV3
 
-### 2. USB
-- Conecta EV3 a laptop por cable USB mini
-- Enciende EV3
-- Verifica en Device Manager (Windows): "LEGO EV3"
+---
 
-### 3. Software
+## 📐 Arquitectura del Sistema
+
+```
+┌──────────────────────────────────┐
+│ JETSON XAVIER (jetson_cpp)       │
+│                                  │
+│  ┌─────────┐    ┌─────────────┐ │
+│  │ Estado  │───>│  DQN Agent  │ │     UDP
+│  │ (4D)    │    │  LibTorch   │─┼────────┐
+│  └─────────┘    │  CUDA       │ │        │
+│                 └─────────────┘ │        │
+└──────────────────────────────────┘        │
+                                            ▼
+                                 ┌──────────────────┐
+                                 │ LAPTOP (bridge)  │
+                                 │   Python         │
+                                 └────────┬─────────┘
+                                          │ USB
+                                          ▼
+                                 ┌──────────────────┐
+                                 │  EV3 ROBOT       │
+                                 │  Motores A/D     │
+                                 └──────────────────┘
+```
+
+**Flujo de Datos:**
+1. **Estado** → DQN Agent (red neuronal)
+2. **Acción** (0-4) → Enviada por UDP
+3. **Bridge** traduce → Comando EV3
+4. **Motores** ejecutan movimiento
+
+**Acciones Disponibles:**
+- `0`: STOP
+- `1`: FORWARD (Motor A+D adelante)
+- `2`: TURN_LEFT (A atrás, D adelante)
+- `3`: TURN_RIGHT (A adelante, D atrás)
+- `4`: BACKWARD (Motor A+D atrás)
+
+**Safety:** Watchdog en bridge - STOP automático si no recibe comandos >0.5s
+
+---
+
+## 🚀 Inicio Rápido
+
+### 1️⃣ Laptop (Windows) - Bridge Python
+
+**Instalar dependencia:**
 ```cmd
 pip install python-ev3dev2
 ```
 
----
+**Conectar EV3:**
+- Cable USB a laptop
+- Encender EV3
+- Verificar en Device Manager: "LEGO EV3"
 
-## Testing (paso a paso)
-
-### Test 1: Motores EV3
-```cmd
-cd laptop
-python ev3_controller.py
-```
-Confirma que A y D giran.
-
-### Test 2: Bridge + Test Local
-**Terminal 1**:
+**Ejecutar bridge:**
 ```cmd
 cd laptop
 python bridge.py
 ```
 
-**Terminal 2**:
-```cmd
-cd laptop
-python test_sender.py
-```
-Elige opción `1`, presiona teclas 0-4.
+### 2️⃣ Jetson Xavier - Entrenamiento + Inferencia DQN
 
-### Test 3: Jetson → Laptop (completo)
+**Prerequisito:** LibTorch instalado (verificar ruta con `find /usr -name "libtorch" 2>/dev/null`)
 
-**Ver JETSON_SETUP.md para instrucciones detalladas de Jetson.**
-
-Resumen:
-
-**En Jetson**:
+**Paso 1: Compilar**
 ```bash
-cd ~/jetson_cpp/build
-cmake ..
+cd jetson_cpp
+mkdir -p build && cd build
+
+# IMPORTANTE: Reemplaza /ruta/a/libtorch con la ruta REAL en tu Jetson
+cmake -DCMAKE_PREFIX_PATH=/ruta/a/libtorch -DCMAKE_BUILD_TYPE=Release ..
 make -j4
-./dqn_agent
 ```
 
-**En Laptop**:
-```cmd
-cd laptop
-python bridge.py
+**Paso 2: Entrenar modelo (REQUERIDO por el proyecto)** ⭐
+```bash
+# Entrenar DQN en simulación (500 episodios, ~10-15 min)
+./train_simulation 500
+
+# Genera modelos en:
+# - models/dqn_simulation_best.pt
+# - models/dqn_simulation_final.pt
 ```
 
-Verás acciones del DQN. EV3 se mueve.
+**Paso 3: Ejecutar inferencia con modelo entrenado**
+```bash
+# Con modelo entrenado (RECOMENDADO)
+./jetson_dqn <laptop_ip> -p dqn -m models/dqn_simulation_best.pt
+
+# Ejemplos:
+./jetson_dqn 192.168.1.100 -p dqn -m models/dqn_simulation_best.pt
+```
+
+**Ver documentación completa:** `jetson_cpp/README.md`
 
 ---
 
-## Integrar tu DQN
-
-**El DQN está en C++**. Ver `JETSON_SETUP.md` sección "Integrar tu Modelo DQN".
-
-Opciones:
-1. **PyTorch C++**: Exporta tu modelo a TorchScript (.pt)
-2. **TensorRT**: Convierte a .trt (más rápido en Jetson)
-3. **ONNX Runtime**: Balance entre velocidad y simplicidad
-
-**Sin modelo**: El código usa acciones aleatorias (útil para testing).
-
----
-
-## Calibrar
-
-### Velocidades
-Edita `config.py` líneas 31-36:
-```python
-SPEED_FORWARD = 40  # Más alto = más rápido
-SPEED_TURN = 30     # Más alto = giros bruscos
-```
-
-### Corregir sentido
-Si va al revés, edita `config.py` líneas 54-58:
-```python
-INVERT_FORWARD = True  # Invierte adelante/atrás
-INVERT_TURNS = True    # Invierte izq/der
-```
-
----
-
-## Archivos
+## 📂 Estructura del Proyecto
 
 ```
 Cloud_Final/
-├── config.py              # Configuración Python (laptop)
-│
-├── jetson_cpp/            # DQN en C++ (JETSON NANO)
-│   ├── main.cpp           # Loop principal: Cámara → DQN → UDP
-│   ├── dqn_agent.cpp      # Algoritmo DQN completo
-│   ├── CMakeLists.txt     # Build con cmake
-│   └── models/            # Tus modelos entrenados (.pt, .onnx)
-│
-├── laptop/                # Puente Python (LAPTOP WINDOWS)
-│   ├── bridge.py          # Puente UDP→USB + safety
-│   ├── ev3_controller.py  # Control motores EV3
-│   └── test_sender.py     # Testing local sin Jetson
-│
-├── JETSON_SETUP.md        # Instrucciones Jetson (compilar, ejecutar)
 ├── README.md              # Este archivo
-└── QUICKSTART.md          # 3 pasos rápidos
+├── config.py              # Configuración compartida
+│
+├── jetson_cpp/            # 🧠 DQN en C++ (JETSON XAVIER)
+│   ├── include/dqn/       # Headers del agente DQN
+│   │   ├── agent.h        # Agente DQN completo
+│   │   ├── network.h      # Red neuronal (LibTorch)
+│   │   ├── replay_buffer.h
+│   │   └── types.h
+│   ├── src/dqn/           # Implementación DQN
+│   │   ├── agent.cpp      # ✓ Código probado
+│   │   ├── network.cpp    # ✓ Código probado
+│   │   └── replay_buffer.cpp
+│   ├── main.cpp           # DQN + UDP integrado
+│   ├── CMakeLists.txt     # Build con LibTorch
+│   └── README.md          # Documentación detallada
+│
+└── laptop/                # 🌉 Bridge Python (LAPTOP WINDOWS)
+    ├── bridge.py          # Servidor UDP → EV3
+    └── ev3_controller.py  # Control de motores
+```
+
+**Tamaño total:** ~100KB (limpiado de archivos innecesarios)
+
+---
+
+## ⚙️ Componentes Principales
+
+### 1. DQN Agent (Jetson Xavier)
+- **Lenguaje:** C++17
+- **Framework:** LibTorch (PyTorch C++ API)
+- **Device:** CUDA (GPU) o CPU (auto-detect)
+- **Arquitectura Red:** 4 → 128 → 128 → 5 (fully connected)
+- **Estado:** Vector 4D `[gyro_x, gyro_y, contact_front, contact_side]`
+- **Acciones:** 5 discretas `{STOP, FORWARD, LEFT, RIGHT, BACKWARD}`
+
+### 2. Bridge (Laptop Windows)
+- **Lenguaje:** Python 3
+- **Protocolo:** UDP (puerto 5000)
+- **Hardware:** USB → EV3 con ev3-dc library
+- **Safety:** Watchdog timer (0.5s timeout)
+
+### 3. EV3 Robot
+- **Firmware:** LEGO original (NO ev3dev)
+- **Motores:** A (izquierda) + D (derecha)
+- **Conexión:** USB a laptop
+
+---
+
+## 🔧 Configuración
+
+### Ajustar velocidades (config.py)
+```python
+SPEED_FORWARD = 40  # Velocidad adelante/atrás
+SPEED_TURN = 30     # Velocidad de giro
+```
+
+### Invertir dirección si es necesario
+```python
+INVERT_FORWARD = True   # Invierte adelante/atrás
+INVERT_TURNS = True     # Invierte izquierda/derecha
 ```
 
 ---
 
-## Logs
+## 🐛 Troubleshooting
 
-Bridge genera `bridge_log_*.txt`:
-```
-[10:30:45.123] ← Recibido: 1 desde 192.168.1.50
-[10:30:45.125] ✓ Acción 1 (FORWARD) ejecutada
-[10:30:46.234] ⚠ TIMEOUT → STOP
-```
-
----
-
-## Motor C
-
-Ignorado por ahora. Cuando A/D funcionen, decide si necesitas moverlo y actualiza:
-1. `config.py` (añadir acciones 5-6)
-2. `ev3_controller.py` (conectar OUTPUT_C)
-3. `jetson_sender.py` (extender ACTIONS)
+| Problema | Solución |
+|----------|----------|
+| `ev3dev2 not found` | `pip install python-ev3dev2` |
+| EV3 no conecta | Verificar USB, encender EV3, Device Manager |
+| No recibe UDP | Firewall Windows, permitir Python puerto 5000 |
+| LibTorch not found | Verificar `/usr/local/libtorch` existe |
+| CUDA out of memory | Automáticamente usa CPU como fallback |
+| Robot va al revés | Editar `config.py` flags INVERT |
 
 ---
 
-## Troubleshooting
+## 📖 Documentación Adicional
 
-**"ev3dev2 no encontrado"** → `pip install python-ev3dev2`
-
-**"No conecta EV3"** → USB, enciende EV3, Device Manager
-
-**"No recibe UDP"** → Firewall Windows, permite Python puerto 5000
-
-**"Va al revés"** → `config.py` INVERT_FORWARD = True
+- **Jetson Xavier setup completo:** `jetson_cpp/README.md`
+- **Detalles de implementación DQN:** Ver headers en `jetson_cpp/include/dqn/`
+- **Configuración avanzada:** `config.py` (comentarios inline)
 
 ---
 
-**Todo listo. Integra tu DQN y prueba.**
+## ✅ Requisitos del Proyecto
+
+- [x] Robot físico LEGO Mindstorms EV3
+- [x] DQN implementado en C++ con CUDA
+- [x] Aprendizaje e inferencia en Jetson Xavier
+- [x] Control autónomo del robot
+- [x] Código en repositorio GitHub
+- [x] Documentación técnica completa
+
+---
+
+**Proyecto listo para compilar y ejecutar en Jetson Xavier + EV3**

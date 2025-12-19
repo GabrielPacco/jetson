@@ -1,14 +1,21 @@
     #!/usr/bin/env python3
 """
-Laptop Bridge - Puente entre Jetson (UDP) y EV3 (USB)
+Laptop Bridge - Puente BIDIRECCIONAL entre Jetson (UDP) y EV3 (USB)
 Corre en Windows
 
 FLUJO:
-  Jetson → [UDP] → Bridge → [USB] → EV3
+  Jetson → [UDP] → Bridge → [USB] → EV3  (Acciones)
+  Jetson ← [UDP] ← Bridge ← [USB] ← EV3  (Sensores)
+
+PROTOCOLO:
+  1. Jetson envía: "ACTION:N" (donde N = 0-4)
+  2. Bridge ejecuta acción en EV3
+  3. Bridge lee sensores del EV3
+  4. Bridge responde: "SENSORS:gyro_angle,gyro_rate,touch_front,touch_side"
 
 SEGURIDAD:
   - Si no recibe del Jetson por >0.5s → envía STOP al EV3
-  - Logging de todas las acciones
+  - Logging de todas las acciones y sensores
 """
 import socket
 import time
@@ -16,6 +23,7 @@ import threading
 from datetime import datetime
 import sys
 import os
+import json
 
 # Añadir parent directory al path para importar config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -75,14 +83,48 @@ class Bridge:
             self.log(f"ERROR: Dato inválido recibido: {e}")
             return None, None
 
-    def execute_action(self, action):
-        """Ejecuta acción en EV3"""
+    def execute_action(self, action, client_addr=None):
+        """
+        Ejecuta acción en EV3 y opcionalmente envía sensores de vuelta
+
+        Args:
+            action: Código de acción (0-4)
+            client_addr: (ip, port) del cliente para enviar respuesta. Si None, no envía.
+
+        Returns:
+            sensor_data: dict con valores de sensores (o None si no hay client_addr)
+        """
         if self.ev3.execute_action(action):
             self.last_action = action
             action_name = ["STOP", "FORWARD", "TURN_LEFT", "TURN_RIGHT", "BACKWARD"][action]
             self.log(f"[OK] Accion {action} ({action_name}) ejecutada")
         else:
             self.log(f"[ERROR] Accion {action} invalida, enviando STOP")
+            return None
+
+        # Leer sensores después de ejecutar acción
+        sensor_data = self.ev3.read_sensors()
+
+        # Si hay client_addr, enviar sensores de vuelta
+        if client_addr is not None:
+            self.send_sensors(sensor_data, client_addr)
+
+        return sensor_data
+
+    def send_sensors(self, sensor_data, client_addr):
+        """
+        Envía datos de sensores al Jetson por UDP
+
+        Formato: "gyro_angle,gyro_rate,touch_front,touch_side"
+        Ejemplo: "12.5,-3.2,0,1"
+        """
+        try:
+            # Formato CSV simple
+            msg = f"{sensor_data['gyro_angle']:.2f},{sensor_data['gyro_rate']:.2f},{sensor_data['touch_front']},{sensor_data['touch_side']}"
+            self.sock.sendto(msg.encode('utf-8'), client_addr)
+            self.log(f"-> Sensores enviados a {client_addr[0]}:{client_addr[1]}: {msg}")
+        except Exception as e:
+            self.log(f"[ERROR] Enviando sensores: {e}")
 
     def watchdog(self):
         """Thread que monitorea timeout y envía STOP si no recibe"""
