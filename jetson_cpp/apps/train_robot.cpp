@@ -93,7 +93,7 @@ public:
         bridge_addr_.sin_family = AF_INET;
         bridge_addr_.sin_port = htons(bridge_port);
         if (inet_pton(AF_INET, bridge_ip.c_str(), &bridge_addr_.sin_addr) <= 0) {
-            close(sock_fd_);
+            ::close(sock_fd_);
             throw std::runtime_error("IP inválida: " + bridge_ip);
         }
 

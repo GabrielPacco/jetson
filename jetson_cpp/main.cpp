@@ -337,10 +337,10 @@ private:
 class DQNPolicy : public Policy {
 public:
     DQNPolicy(const std::string& model_path = "")
-        : model_loaded_(false) {
+        : device_(torch::cuda::is_available() ? torch::kCUDA : torch::kCPU),
+          model_loaded_(false) {
 
         // Configurar device (CUDA si está disponible)
-        device_ = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
         std::cout << "[DQNPolicy] Using device: " << device_ << std::endl;
 
         // Parámetros del entorno EV3
