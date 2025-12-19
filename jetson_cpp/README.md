@@ -1,25 +1,25 @@
 # Jetson DQN + UDP para Control EV3
 
-✅ **INTEGRACIÓN COMPLETA** - DQN probado de jetson_test + Comunicación UDP funcional
+**INTEGRACIÓN COMPLETA** - DQN probado de jetson_test + Comunicación UDP funcional
 
 Sistema integrado que combina:
-- **DQN probado** de `jetson_test` (CÓDIGO SIN MODIFICAR ✓)
+- **DQN probado** de `jetson_test` (CÓDIGO SIN MODIFICAR)
 - **Comunicación UDP** funcional al bridge de laptop
 
-## ✅ Estado: INTEGRACIÓN COMPLETA
+## Estado: INTEGRACIÓN COMPLETA
 
-### DQN Core ✓
+### DQN Core
 - **Headers**: `include/dqn/` copiados sin cambios de jetson_test
 - **Source**: `src/dqn/` copiado sin cambios de jetson_test
 - **Probado**: Código ya verificado en Jetson Xavier
 - **CMake**: Configurado con LibTorch
 
-### Comunicación UDP ✓
+### Comunicación UDP
 - **Cliente UDP**: Funcional en main.cpp
 - **Servidor Bridge**: Probado en laptop
 - **EV3**: Respondiendo correctamente
 
-### Integración ✓
+### Integración
 - **DQNPolicy**: Implementado en main.cpp (líneas 210-288)
 - **Policy Pattern**: Soporta Random y DQN
 - **Argumentos**: `-p random` o `-p dqn -m modelo.pt`
@@ -56,7 +56,7 @@ Sistema integrado que combina:
 
 ---
 
-## 🚀 Compilación en Jetson Xavier
+## Compilación en Jetson Xavier
 
 ### Prerequisitos
 
@@ -136,7 +136,7 @@ Jetson DQN + UDP Configuration
 
 ---
 
-## 🎓 ENTRENAMIENTO (Requerido por el proyecto)
+## ENTRENAMIENTO (Requerido por el proyecto)
 
 ### **Entrenar DQN en simulación**
 
@@ -149,7 +149,6 @@ cd jetson_cpp/build
 # O entrenar menos para prueba rápida
 ./train_simulation 100
 ```
-
 **Salida esperada:**
 ```
 =========================================================================
@@ -184,7 +183,7 @@ Modelos guardados:
 
 ---
 
-## 🎮 INFERENCIA
+## INFERENCIA
 
 Después de entrenar, usar el modelo para inferencia:
 
@@ -196,9 +195,9 @@ cd build
 ```
 
 Acciones aleatorias, útil para:
-- ✓ Verificar comunicación UDP
-- ✓ Probar que EV3 responde
-- ✓ Testear infraestructura
+- Verificar comunicación UDP
+- Probar que EV3 responde
+- Testear infraestructura
 
 ### Modo 2: DQN sin modelo entrenado
 
@@ -207,9 +206,9 @@ Acciones aleatorias, útil para:
 ```
 
 Usa DQN con pesos aleatorios (no entrenado), útil para:
-- ✓ Verificar que DQN compila y carga
-- ✓ Probar inferencia de red neuronal
-- ✓ Confirmar CUDA funciona
+- Verificar que DQN compila y carga
+- Probar inferencia de red neuronal
+- Confirmar CUDA funciona
 
 **Salida esperada:**
 ```
@@ -222,7 +221,7 @@ Usa DQN con pesos aleatorios (no entrenado), útil para:
   Device: cuda:0
 ```
 
-### Modo 3: DQN con modelo entrenado ⭐ **RECOMENDADO**
+### Modo 3: DQN con modelo entrenado (RECOMENDADO)
 
 ```bash
 # Usar modelo generado por train_simulation
@@ -233,14 +232,14 @@ Usa DQN con pesos aleatorios (no entrenado), útil para:
 ```
 [DQNPolicy] Using device: cuda:0
 [DQNPolicy] Loading model from: models/dqn_simulation_best.pt
-[DQNPolicy] ✓ Model loaded successfully
+[DQNPolicy] Model loaded successfully
 ```
 
 ---
 
 ## Próximos Pasos (Roadmap)
 
-### Fase 1: Testing Básico ✅ ACTUAL
+### Fase 1: Testing Básico (ACTUAL)
 
 **Objetivo:** Verificar que toda la comunicación funciona
 
@@ -254,7 +253,7 @@ Usa DQN con pesos aleatorios (no entrenado), útil para:
 
 ---
 
-### Fase 2: Integración DQN Básica ⏳ SIGUIENTE
+### Fase 2: Integración DQN Básica (SIGUIENTE)
 
 **Objetivo:** Integrar el código DQN del repositorio jetson_test
 
@@ -311,7 +310,7 @@ sudo mv libtorch /usr/local/
 
 ---
 
-### Fase 3: Entrenamiento en el EV3 Real 🎯 FINAL
+### Fase 3: Entrenamiento en el EV3 Real (FINAL)
 
 **Objetivo:** Entrenar DQN con el robot físico
 
@@ -349,7 +348,7 @@ sudo mv libtorch /usr/local/
 
 ## Qué Falta por Hacer
 
-### 🔴 Crítico (Sin esto no funciona DQN)
+### CRÍTICO (Sin esto no funciona DQN)
 
 1. **Instalar LibTorch en Jetson**
    - Descargar versión ARM64 con CUDA
@@ -370,7 +369,7 @@ sudo mv libtorch /usr/local/
    - Opción rápida: Train en simulación
    - Opción real: Entrenar con el EV3
 
-### 🟡 Importante (Para mejor rendimiento)
+### IMPORTANTE (Para mejor rendimiento)
 
 4. **Feedback de sensores**
    - Actualmente es "open-loop" (sin feedback)
@@ -381,7 +380,7 @@ sudo mv libtorch /usr/local/
    - Definir qué comportamientos premiar
    - Implementar cálculo de rewards
 
-### 🟢 Opcional (Mejoras)
+### OPCIONAL (Mejoras)
 
 6. **Visualización**
    - Dashboard web para monitorear
@@ -413,7 +412,7 @@ sudo mv libtorch /usr/local/
 
 ## Testing Checklist
 
-### Test 1: Comunicación UDP ⏳
+### Test 1: Comunicación UDP
 - [ ] Bridge corriendo en laptop
 - [ ] Jetson puede hacer ping a laptop
 - [ ] `./jetson_dqn` se conecta exitosamente

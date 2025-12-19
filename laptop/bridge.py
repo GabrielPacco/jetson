@@ -139,7 +139,7 @@ class Bridge:
             time.sleep(0.1)
 
     def run(self):
-        """Loop principal del puente"""
+        """Loop principal del puente BIDIRECCIONAL"""
         self.running = True
 
         # Iniciar watchdog en thread separado
@@ -147,6 +147,7 @@ class Bridge:
         watchdog_thread.start()
 
         self.log("Bridge operativo. Esperando acciones del Jetson...")
+        self.log("Modo: BIDIRECCIONAL (acciones + sensores)")
         self.log("Presiona Ctrl+C para detener\n")
 
         try:
@@ -155,7 +156,8 @@ class Bridge:
 
                 if action is not None:
                     self.log(f"<- Recibido: {action} desde {addr[0]}:{addr[1]}")
-                    self.execute_action(action)
+                    # Ejecutar acción Y enviar sensores de vuelta
+                    self.execute_action(action, client_addr=addr)
 
         except KeyboardInterrupt:
             self.log("\n\nDeteniendo bridge...")

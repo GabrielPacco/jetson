@@ -16,6 +16,7 @@ build/
 bridge_log_*.txt
 training.log
 simulation_training.log
+robot_training.log
 
 # Models (archivos grandes)
 models/*.pt
@@ -41,3 +42,10 @@ nul
 
 # Config local
 configs/local_*.yaml
+
+
+./laptop/test_gyro.py
+./POSIBLES_PROBLEMAS.md 
+# Local Claude 
+/.claude/ 
+/laptop/.claude/

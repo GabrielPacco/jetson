@@ -30,6 +30,8 @@
 #include <cstring>
 #include <random>
 #include <memory>
+#include <sstream>
+#include <vector>
 
 // DQN includes (código probado de jetson_test)
 #include <torch/torch.h>
@@ -73,11 +75,49 @@ void signalHandler(int signum) {
 }
 
 // ============================================================================
-// CLASE UDP SENDER
+// SENSOR DATA
 // ============================================================================
 
 /**
- * Envía acciones por UDP al bridge de la laptop
+ * Datos de sensores recibidos del EV3 vía bridge
+ */
+struct SensorData {
+    float gyro_angle;      // Ángulo del giroscopio (grados)
+    float gyro_rate;       // Velocidad angular (grados/segundo)
+    int touch_front;       // Sensor táctil frontal (0 o 1, -1 si no disponible)
+    int touch_side;        // Sensor táctil lateral (0 o 1, -1 si no disponible)
+    bool valid;            // true si los datos son válidos
+
+    SensorData() : gyro_angle(0.0f), gyro_rate(0.0f),
+                   touch_front(-1), touch_side(-1), valid(false) {}
+
+    // Convierte sensores a estado normalizado para DQN
+    // [gyro_angle_norm, gyro_rate_norm, touch_front, touch_side]
+    torch::Tensor toState() const {
+        torch::Tensor state = torch::zeros({4}, torch::kFloat32);
+
+        // Normalizar ángulo de giroscopio a rango [-1, 1]
+        // Asumiendo que ±90 grados es el rango típico
+        state[0] = std::tanh(gyro_angle / 90.0f);
+
+        // Normalizar velocidad angular a rango [-1, 1]
+        // Asumiendo que ±180 grados/segundo es el rango típico
+        state[1] = std::tanh(gyro_rate / 180.0f);
+
+        // Sensores táctiles (binarios: 0 o 1)
+        state[2] = touch_front >= 0 ? static_cast<float>(touch_front) : 0.0f;
+        state[3] = touch_side >= 0 ? static_cast<float>(touch_side) : 0.0f;
+
+        return state;
+    }
+};
+
+// ============================================================================
+// CLASE UDP SENDER BIDIRECCIONAL
+// ============================================================================
+
+/**
+ * Envía acciones y recibe sensores por UDP al/del bridge de la laptop
  */
 class UDPSender {
 public:
@@ -97,6 +137,12 @@ public:
         tv.tv_sec = UDP_TIMEOUT;
         tv.tv_usec = 0;
         setsockopt(sock_fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+        // Configurar timeout para receive (300ms para esperar sensores)
+        struct timeval tv_recv;
+        tv_recv.tv_sec = 0;
+        tv_recv.tv_usec = 300000;  // 300ms
+        setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv_recv, sizeof(tv_recv));
 
         // Configurar dirección del servidor
         memset(&server_addr_, 0, sizeof(server_addr_));
@@ -122,7 +168,7 @@ public:
         }
     }
 
-    bool send(int action) {
+    bool send(int action, SensorData* sensors_out = nullptr) {
         if (!connected_ || sock_fd_ < 0) {
             std::cerr << "[ERROR] Socket UDP no inicializado" << std::endl;
             return false;
@@ -156,15 +202,89 @@ public:
         strftime(buffer, sizeof(buffer), "%H:%M:%S", tm_info);
 
         std::cout << "[" << buffer << "." << ms.count() << "] "
-                  << "Action: " << action << " (" << ACTION_NAMES[action] << ")"
-                  << std::endl;
+                  << "Action: " << action << " (" << ACTION_NAMES[action] << ")";
+
+        // Si se proporcionó puntero para sensores, intentar recibir
+        if (sensors_out != nullptr) {
+            SensorData sensors = receiveSensors();
+            *sensors_out = sensors;
+
+            if (sensors.valid) {
+                std::cout << " | Sensors: gyro=" << sensors.gyro_angle
+                          << "°, rate=" << sensors.gyro_rate << "°/s"
+                          << ", touch=[" << sensors.touch_front << ","
+                          << sensors.touch_side << "]";
+            }
+        }
+
+        std::cout << std::endl;
 
         return true;
+    }
+
+    SensorData receiveSensors() {
+        SensorData data;
+
+        char recv_buffer[256];
+        memset(recv_buffer, 0, sizeof(recv_buffer));
+
+        struct sockaddr_in from_addr;
+        socklen_t from_len = sizeof(from_addr);
+
+        // Intentar recibir respuesta del bridge (con timeout)
+        ssize_t received = recvfrom(sock_fd_, recv_buffer, sizeof(recv_buffer) - 1, 0,
+                                    (struct sockaddr*)&from_addr, &from_len);
+
+        if (received < 0) {
+            // Timeout o error (normal si no hay sensores)
+            return data;  // data.valid = false
+        }
+
+        recv_buffer[received] = '\0';
+        std::string response(recv_buffer);
+
+        // Parsear formato CSV: "gyro_angle,gyro_rate,touch_front,touch_side"
+        // Ejemplo: "12.50,-3.20,0,1"
+        if (parseSensorData(response, data)) {
+            data.valid = true;
+        }
+
+        return data;
     }
 
     bool isConnected() const { return connected_; }
 
 private:
+    bool parseSensorData(const std::string& csv, SensorData& data) {
+        // Formato esperado: "gyro_angle,gyro_rate,touch_front,touch_side"
+        // Ejemplo: "12.50,-3.20,0,1"
+
+        std::istringstream ss(csv);
+        std::string token;
+        std::vector<std::string> tokens;
+
+        // Dividir por comas
+        while (std::getline(ss, token, ',')) {
+            tokens.push_back(token);
+        }
+
+        if (tokens.size() != 4) {
+            std::cerr << "[WARNING] Formato de sensores inválido: " << csv << std::endl;
+            return false;
+        }
+
+        try {
+            data.gyro_angle = std::stof(tokens[0]);
+            data.gyro_rate = std::stof(tokens[1]);
+            data.touch_front = std::stoi(tokens[2]);
+            data.touch_side = std::stoi(tokens[3]);
+            return true;
+        } catch (const std::exception& e) {
+            std::cerr << "[WARNING] Error parseando sensores: " << e.what() << std::endl;
+            return false;
+        }
+    }
+
     int sock_fd_;
     struct sockaddr_in server_addr_;
     std::string laptop_ip_;
@@ -182,7 +302,7 @@ private:
 class Policy {
 public:
     virtual ~Policy() = default;
-    virtual int selectAction() = 0;
+    virtual int selectAction(const SensorData* sensors = nullptr) = 0;
     virtual std::string getName() const = 0;
 };
 
@@ -195,7 +315,9 @@ public:
         : rng_(std::random_device{}())
         , dist_(0, NUM_ACTIONS - 1) {}
 
-    int selectAction() override {
+    int selectAction(const SensorData* sensors = nullptr) override {
+        // Ignora sensores, siempre aleatorio
+        (void)sensors;  // Suprimir warning de parámetro no usado
         return dist_(rng_);
     }
 
@@ -258,11 +380,16 @@ public:
         }
     }
 
-    int selectAction() override {
-        // NOTA: Por ahora usamos estado dummy (todos ceros)
-        // En el futuro, esto se reemplazaría con lecturas reales de sensores del EV3
-        // que llegarían desde el bridge (comunicación bidireccional)
-        torch::Tensor state = torch::zeros({4}, torch::kFloat32);
+    int selectAction(const SensorData* sensors = nullptr) override {
+        torch::Tensor state;
+
+        if (sensors != nullptr && sensors->valid) {
+            // Usar sensores reales del EV3
+            state = sensors->toState();
+        } else {
+            // Fallback: estado dummy (todos ceros) si no hay sensores
+            state = torch::zeros({4}, torch::kFloat32);
+        }
 
         // Mover estado al device correcto
         state = state.to(device_);
@@ -388,22 +515,24 @@ int main(int argc, char* argv[]) {
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
     // ========================================================================
-    // 6. Loop principal
+    // 6. Loop principal CON SENSORES
     // ========================================================================
     std::cout << "\n[Running] Iniciando loop de control..." << std::endl;
+    std::cout << "Modo: BIDIRECCIONAL (acciones + sensores del EV3)" << std::endl;
     std::cout << "=========================================================================" << std::endl;
 
     auto delay = std::chrono::milliseconds(1000 / ACTION_FREQUENCY);
     int step = 0;
+    SensorData sensors;  // Datos de sensores del EV3
 
     while (running) {
         auto start_time = std::chrono::steady_clock::now();
 
-        // Seleccionar acción usando la política
-        int action = policy->selectAction();
+        // Seleccionar acción usando la política (con sensores de la iteración anterior)
+        int action = policy->selectAction(&sensors);
 
-        // Enviar acción por UDP
-        if (!udp.send(action)) {
+        // Enviar acción por UDP Y recibir sensores actualizados
+        if (!udp.send(action, &sensors)) {
             std::cerr << "[WARN] Fallo al enviar acción " << action << std::endl;
         }
 
@@ -411,7 +540,11 @@ int main(int argc, char* argv[]) {
 
         // Logging periódico de estadísticas
         if (step % 50 == 0) {
-            std::cout << "\n[Stats] Steps ejecutados: " << step << std::endl;
+            std::cout << "\n[Stats] Steps ejecutados: " << step;
+            if (sensors.valid) {
+                std::cout << " | Gyro: " << sensors.gyro_angle << "°";
+            }
+            std::cout << std::endl;
             std::cout << "=========================================================================" << std::endl;
         }
 

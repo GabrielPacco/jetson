@@ -65,10 +65,14 @@ class EV3Controller:
         self.touch_side = None
 
         # Gyro Sensor (típicamente Puerto 2 en Gyro Boy)
+        # NOTA: ev3-dc usa clases Sensor genéricas, no específicas por tipo
         if use_gyro:
             try:
-                self.gyro_sensor = ev3.EV3GyroSensor(ev3.PORT_2, ev3_obj=self.ev3_brick)
+                # ev3-dc API: Sensor(port, ev3_obj=...)
+                # Gyro sensor devuelve valores con .read()
+                self.gyro_sensor = ev3.Sensor(ev3.PORT_2, ev3_obj=self.ev3_brick)
                 print("[OK] Gyro Sensor inicializado (Puerto 2)")
+                print("     IMPORTANTE: Verifica que el sensor esté conectado y sea tipo GYRO")
             except Exception as e:
                 print(f"[WARNING] No se pudo inicializar Gyro Sensor: {e}")
                 print("          Continuando sin giroscopio...")
@@ -76,16 +80,16 @@ class EV3Controller:
         # Touch Sensors (opcional - solo si tienes sensores táctiles)
         if use_touch:
             try:
-                self.touch_front = ev3.EV3TouchSensor(ev3.PORT_1, ev3_obj=self.ev3_brick)
-                print("[OK] Touch Sensor frontal (Puerto 1)")
-            except:
-                print("[INFO] Touch Sensor frontal no detectado (Puerto 1)")
+                self.touch_front = ev3.Sensor(ev3.PORT_1, ev3_obj=self.ev3_brick)
+                print("[OK] Touch Sensor inicializado (Puerto 1)")
+            except Exception as e:
+                print(f"[INFO] Touch Sensor frontal no detectado: {e}")
 
             try:
-                self.touch_side = ev3.EV3TouchSensor(ev3.PORT_4, ev3_obj=self.ev3_brick)
-                print("[OK] Touch Sensor lateral (Puerto 4)")
-            except:
-                print("[INFO] Touch Sensor lateral no detectado (Puerto 4)")
+                self.touch_side = ev3.Sensor(ev3.PORT_4, ev3_obj=self.ev3_brick)
+                print("[OK] Touch Sensor lateral inicializado (Puerto 4)")
+            except Exception as e:
+                print(f"[INFO] Touch Sensor lateral no detectado: {e}")
 
         # Velocidades (ev3-dc usa -100 a 100)
         self.speed_forward = speed_forward
@@ -159,30 +163,46 @@ class EV3Controller:
         # Leer giroscopio
         if self.gyro_sensor is not None:
             try:
-                # angle: ángulo acumulado en grados
-                # rate: velocidad angular en grados/segundo
-                angle = self.gyro_sensor.angle
-                rate = self.gyro_sensor.rate
+                # ev3-dc API: Sensor.read() devuelve valor(es) del sensor
+                # Para Gyro Sensor, típicamente devuelve ángulo
+                # NOTA: Puede necesitar ajustes según el modo del sensor
+                value = self.gyro_sensor.read()
 
-                sensor_data['gyro_angle'] = float(angle) if angle is not None else 0.0
-                sensor_data['gyro_rate'] = float(rate) if rate is not None else 0.0
+                # Si read() devuelve tupla (angle, rate), desempaquetar
+                # Si devuelve solo ángulo, usar directamente
+                if isinstance(value, (list, tuple)) and len(value) >= 2:
+                    sensor_data['gyro_angle'] = float(value[0])
+                    sensor_data['gyro_rate'] = float(value[1])
+                elif isinstance(value, (int, float)):
+                    sensor_data['gyro_angle'] = float(value)
+                    sensor_data['gyro_rate'] = 0.0  # No disponible
+                else:
+                    sensor_data['gyro_angle'] = 0.0
+                    sensor_data['gyro_rate'] = 0.0
+
             except Exception as e:
                 print(f"[ERROR] Leyendo giroscopio: {e}")
+                print(f"        Tipo de valor recibido: {type(value) if 'value' in locals() else 'N/A'}")
                 sensor_data['gyro_angle'] = 0.0
                 sensor_data['gyro_rate'] = 0.0
 
         # Leer sensor táctil frontal
         if self.touch_front is not None:
             try:
-                sensor_data['touch_front'] = 1 if self.touch_front.pressed else 0
-            except:
+                value = self.touch_front.read()
+                # Touch sensor típicamente devuelve 0 o 1
+                sensor_data['touch_front'] = 1 if value else 0
+            except Exception as e:
+                print(f"[ERROR] Leyendo touch frontal: {e}")
                 sensor_data['touch_front'] = -1
 
         # Leer sensor táctil lateral
         if self.touch_side is not None:
             try:
-                sensor_data['touch_side'] = 1 if self.touch_side.pressed else 0
-            except:
+                value = self.touch_side.read()
+                sensor_data['touch_side'] = 1 if value else 0
+            except Exception as e:
+                print(f"[ERROR] Leyendo touch lateral: {e}")
                 sensor_data['touch_side'] = -1
 
         return sensor_data

@@ -66,9 +66,16 @@ target_link_libraries(jetson_dqn
     ${CMAKE_THREAD_LIBS_INIT}
 )
 
-# Training executable (Simulation mode)
+# Training executable (Simulation mode - NO requiere robot)
 add_executable(train_simulation apps/train_simulation.cpp)
 target_link_libraries(train_simulation dqn_core)
+
+# Training executable (Robot real mode - Requiere EV3 + bridge)
+add_executable(train_robot apps/train_robot.cpp)
+target_link_libraries(train_robot
+    dqn_core
+    ${CMAKE_THREAD_LIBS_INIT}
+)
 
 # ==============================================================================
 # Print Configuration Summary
@@ -88,8 +95,11 @@ message(STATUS "  mkdir -p build && cd build")
 message(STATUS "  cmake -DCMAKE_PREFIX_PATH=/usr/local/libtorch ..")
 message(STATUS "  make -j4")
 message(STATUS "")
-message(STATUS "Para entrenar (simulación):")
+message(STATUS "Para entrenar en SIMULACIÓN (sin robot):")
 message(STATUS "  ./train_simulation [num_episodes]")
+message(STATUS "")
+message(STATUS "Para entrenar con ROBOT REAL (requiere bridge + EV3):")
+message(STATUS "  ./train_robot <laptop_ip> [num_episodes]")
 message(STATUS "")
 message(STATUS "Para ejecutar inferencia:")
 message(STATUS "  ./jetson_dqn <laptop_ip> -p dqn [-m modelo.pt]")
